@@ -6,12 +6,17 @@ const {
 } = require('discord.js');
 const guildConfig = require('../config/guildConfig');
 const { canConfigure } = require('../utils/permissions');
+const { MODELS } = require('../transcription/whisperModels');
 
 const LLM_PROVIDERS = [{ name: 'ollama', value: 'ollama' }];
 const STT_PROVIDERS = [
   { name: 'whispercpp', value: 'whispercpp' },
   { name: 'openai', value: 'openai' },
 ];
+const WHISPER_MODEL_CHOICES = MODELS.map((m) => ({
+  name: `${m.name} (${m.size}) — ${m.description}`.slice(0, 100),
+  value: m.name,
+}));
 
 const data = new SlashCommandBuilder()
   .setName('config')
@@ -37,7 +42,10 @@ const data = new SlashCommandBuilder()
         o.setName('provider').setDescription('STT provider').addChoices(...STT_PROVIDERS)
       )
       .addStringOption((o) =>
-        o.setName('model_path').setDescription('Path to whisper.cpp GGML model file (whispercpp only)')
+        o
+          .setName('model')
+          .setDescription('whisper.cpp model (resolved from WHISPER_MODELS_DIR)')
+          .addChoices(...WHISPER_MODEL_CHOICES)
       )
       .addStringOption((o) =>
         o.setName('api_key').setDescription('API key (openai only — stored in DB, see README)')
@@ -111,14 +119,14 @@ async function handleLlm(interaction) {
 async function handleStt(interaction) {
   const patch = {};
   const provider = interaction.options.getString('provider');
-  const modelPath = interaction.options.getString('model_path');
+  const model = interaction.options.getString('model');
   const apiKey = interaction.options.getString('api_key');
   if (provider) patch.stt_provider = provider;
-  if (modelPath) patch.stt_model_path = modelPath;
+  if (model) patch.stt_model_name = model;
   if (apiKey) patch.stt_api_key = apiKey;
   if (Object.keys(patch).length === 0) {
     return interaction.reply({
-      content: 'No STT fields provided. Pass at least one of `provider`, `model_path`, or `api_key`.',
+      content: 'No STT fields provided. Pass at least one of `provider`, `model`, or `api_key`.',
       flags: MessageFlags.Ephemeral,
     });
   }
@@ -148,6 +156,16 @@ async function handleRole(interaction) {
 
 async function handleShow(interaction, cfg) {
   const mask = (v) => (v ? `${v.slice(0, 4)}...${v.slice(-2)}` : '_(unset)_');
+  const sttDetail =
+    cfg.stt_provider === 'whispercpp'
+      ? cfg.stt_model_name
+        ? `model: \`${cfg.stt_model_name}\``
+        : cfg.stt_model_path
+          ? `legacy path: \`${cfg.stt_model_path}\``
+          : '_(no model set — run `/config stt model:<choice>`)_'
+      : cfg.stt_provider === 'openai'
+        ? `api key: ${mask(cfg.stt_api_key)}`
+        : '';
   const embed = new EmbedBuilder()
     .setTitle('AI Call Summarizer — Configuration')
     .addFields(
@@ -155,7 +173,7 @@ async function handleShow(interaction, cfg) {
       { name: 'LLM base URL', value: cfg.llm_base_url, inline: true },
       { name: 'LLM model', value: cfg.llm_model, inline: true },
       { name: 'STT provider', value: cfg.stt_provider, inline: true },
-      { name: 'STT model path', value: cfg.stt_model_path || '_(unset)_', inline: true },
+      { name: 'STT model', value: sttDetail || '_(unset)_', inline: true },
       { name: 'STT API key', value: mask(cfg.stt_api_key), inline: true },
       {
         name: 'Summary channel',

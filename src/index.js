@@ -5,17 +5,20 @@ const { generateDependencyReport } = require('@discordjs/voice');
 const { registerCommands, buildCommandMap } = require('./commands/register');
 const { createDispatcher } = require('./commands/dispatch');
 const { createLogger } = require('./utils/logger');
+const { readSecret, SECRETS_DIR } = require('./config/secrets');
 
 const log = createLogger('main');
 
-const TOKEN = process.env.DISCORD_TOKEN;
-const APP_ID = process.env.DISCORD_APP_ID;
+const TOKEN = readSecret('discord_token', 'DISCORD_TOKEN');
+const APP_ID = readSecret('discord_app_id', 'DISCORD_APP_ID');
 const DEV_GUILD_ID = process.env.DISCORD_DEV_GUILD_ID || null;
 
 if (!TOKEN || !APP_ID) {
-  log.error('missing required env', {
-    DISCORD_TOKEN: !!TOKEN,
-    DISCORD_APP_ID: !!APP_ID,
+  log.error('missing required secrets', {
+    discord_token: !!TOKEN,
+    discord_app_id: !!APP_ID,
+    secretsDir: SECRETS_DIR,
+    hint: 'Provide via docker secrets (files at $SECRETS_DIR) or env vars DISCORD_TOKEN / DISCORD_APP_ID.',
   });
   process.exit(1);
 }

@@ -25,4 +25,13 @@ db.exec(`
   );
 `);
 
+addColumnIfMissing('stt_model_name', 'TEXT');
+
+function addColumnIfMissing(column, type) {
+  const cols = db.prepare(`PRAGMA table_info(guild_config)`).all();
+  if (!cols.some((c) => c.name === column)) {
+    db.exec(`ALTER TABLE guild_config ADD COLUMN ${column} ${type}`);
+  }
+}
+
 module.exports = { db, DATA_DIR };

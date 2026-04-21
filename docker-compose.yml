@@ -1,0 +1,178 @@
+name: ai-call-summarizer
+
+# Stack layout:
+#   bot                – the Node.js Discord bot (this repo)
+#   ollama             – local LLM engine (official image)
+#   whisper-models-init – one-shot service that downloads GGML models
+#                        into the shared whisper-models volume
+#   ollama-models-init  – one-shot service that pulls Ollama models
+#                        into the ollama volume (first boot only)
+#
+# Networking: all services join the internal bridge network `backend`.
+# The bot reaches Ollama via DNS at http://ollama:11434 — no ports are
+# published to the host by default, so nothing is exposed to the internet.
+#
+# Persistence:
+#   bot-data         /app/data (SQLite DB + transient session audio)
+#   whisper-models   /opt/whisper-models
+#   ollama-models    /root/.ollama (Ollama blob store + manifests)
+#
+# Secrets:
+#   Files in ./secrets/*.txt are mounted at /run/secrets/* inside the bot
+#   container by Docker's secrets mechanism (tmpfs-backed, not env vars).
+#   The bot's secrets loader prefers those files; falls back to env in dev.
+#
+# Scaling hooks:
+#   - Ollama can be replaced by a hosted LLM by removing the ollama +
+#     ollama-models-init services and pointing `/config llm base_url` at an
+#     external URL.
+#   - Whisper can be split onto a second host by swapping the STT provider
+#     in the bot (future `whispercpp-http` adapter) — no compose changes.
+#   - The `backend` network is declared `external: false` today but can be
+#     promoted to an external overlay network for multi-host swarms.
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+services:
+  bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ${BOT_IMAGE:-ai-call-summarizer:local}
+    container_name: summarizer-bot
+    restart: unless-stopped
+    depends_on:
+      whisper-models-init:
+        condition: service_completed_successfully
+      ollama:
+        condition: service_healthy
+      ollama-models-init:
+        condition: service_completed_successfully
+    environment:
+      NODE_ENV: production
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      LOG_FORMAT: ${LOG_FORMAT:-json}
+      # Bot-side defaults are baked into the image, re-declared here for clarity.
+      WHISPER_CPP_BIN: /usr/local/bin/whisper-cli
+      WHISPER_MODELS_DIR: /opt/whisper-models
+      SECRETS_DIR: /run/secrets
+      # Applied to newly-inserted guild_config rows. Existing rows keep their
+      # configured base URL, so rerunning `/config llm base_url:...` is always
+      # the escape hatch.
+      LLM_DEFAULT_BASE_URL: http://ollama:11434
+      LLM_DEFAULT_MODEL: ${LLM_DEFAULT_MODEL:-llama3.1}
+    secrets:
+      - discord_token
+      - discord_app_id
+    volumes:
+      - bot-data:/app/data
+      - whisper-models:/opt/whisper-models:ro
+    networks:
+      - backend
+    logging: *default-logging
+    healthcheck:
+      # The bot has no HTTP surface; use a filesystem marker as a liveness
+      # signal. `data/bot.db` is created at import time in db.js.
+      test: ["CMD", "test", "-f", "/app/data/bot.db"]
+      interval: 30s
+      timeout: 3s
+      retries: 5
+      start_period: 30s
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: summarizer-ollama
+    restart: unless-stopped
+    environment:
+      OLLAMA_KEEP_ALIVE: "24h"
+    volumes:
+      - ollama-models:/root/.ollama
+    networks:
+      - backend
+    logging: *default-logging
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+
+  whisper-models-init:
+    image: debian:bookworm-slim
+    container_name: summarizer-whisper-init
+    # Runs once per `docker compose up`; exits 0 once all requested models
+    # exist in the shared volume. Skips files that are already present.
+    restart: "no"
+    environment:
+      WHISPER_MODELS: ${WHISPER_MODELS:-tiny.en base.en small.en}
+    volumes:
+      - whisper-models:/models
+    networks:
+      - backend
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -eu
+        apt-get update -qq
+        apt-get install -y -qq --no-install-recommends curl ca-certificates >/dev/null
+        mkdir -p /models
+        for m in $${WHISPER_MODELS}; do
+          f="/models/ggml-$${m}.bin"
+          if [ -f "$${f}" ]; then
+            echo "[whisper-init] exists: $${f}"
+            continue
+          fi
+          echo "[whisper-init] downloading $${m}..."
+          curl -fsSL --retry 5 --retry-delay 3 \
+            -o "$${f}" \
+            "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-$${m}.bin"
+          echo "[whisper-init] done: $${f}"
+        done
+        echo "[whisper-init] all models ready"
+
+  ollama-models-init:
+    image: ollama/ollama:latest
+    container_name: summarizer-ollama-init
+    restart: "no"
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+      OLLAMA_MODELS_TO_PULL: ${OLLAMA_MODELS:-llama3.1}
+    networks:
+      - backend
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -eu
+        for m in $${OLLAMA_MODELS_TO_PULL}; do
+          echo "[ollama-init] ensuring model: $${m}"
+          ollama pull "$${m}"
+        done
+        echo "[ollama-init] all models ready"
+
+networks:
+  backend:
+    driver: bridge
+    # Making the name explicit means other compose stacks can join this
+    # network later via `external: true` for multi-service expansion.
+    name: summarizer_backend
+
+volumes:
+  bot-data:
+    name: summarizer_bot_data
+  whisper-models:
+    name: summarizer_whisper_models
+  ollama-models:
+    name: summarizer_ollama_models
+
+secrets:
+  discord_token:
+    file: ./secrets/discord_token.txt
+  discord_app_id:
+    file: ./secrets/discord_app_id.txt

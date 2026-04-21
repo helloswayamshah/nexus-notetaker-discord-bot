@@ -118,7 +118,7 @@ function setupEmbed() {
         value:
           '```\n'
           + '/config channel channel:#summaries\n'
-          + '/config stt provider:whispercpp model_path:C:\\tools\\whisper.cpp\\ggml-base.en.bin\n'
+          + '/config stt provider:whispercpp model:base.en\n'
           + '/config llm provider:ollama base_url:http://localhost:11434 model:llama3.1\n'
           + '/help\n'
           + '```',
@@ -219,50 +219,55 @@ function configLlmEmbed() {
 }
 
 function configSttEmbed() {
+  const { MODELS } = require('../transcription/whisperModels');
+  const modelsTable = MODELS.map((m) => `\`${m.name}\` — ${m.size}, ${m.description}`).join('\n');
+
   return new EmbedBuilder()
     .setTitle('/config stt — configure speech-to-text')
     .setDescription('Controls how recorded audio is transcribed. Two providers are supported: **`whispercpp`** (local, free) and **`openai`** (cloud API, paid).')
     .addFields(
-      { name: 'Usage', value: '`/config stt [provider:<whispercpp|openai>] [model_path:<path>] [api_key:<sk-...>]`' },
+      { name: 'Usage', value: '`/config stt [provider:<whispercpp|openai>] [model:<choice>] [api_key:<sk-...>]`' },
       {
         name: 'Options',
         value:
           '• `provider` — `whispercpp` or `openai`.\n'
-          + '• `model_path` — **required for `whispercpp`**. Absolute path to a GGML model file.\n'
-          + '• `api_key` — **required for `openai`**. Your OpenAI API key (stored plaintext in SQLite — see README).',
+          + '• `model` — **required for `whispercpp`**. Pick from the dropdown; the bot resolves it to `<WHISPER_MODELS_DIR>/ggml-<name>.bin`.\n'
+          + '• `api_key` — **required for `openai`**. Stored plaintext in SQLite (see README).',
       },
       {
-        name: 'whisper.cpp setup (local, recommended)',
+        name: 'Models directory',
         value:
-          '1. Download the Windows zip: https://github.com/ggerganov/whisper.cpp/releases\n'
-          + '   → look for `whisper-bin-x64.zip` (CPU) or a CUDA variant if you have an NVIDIA GPU.\n'
-          + '2. Extract somewhere with no spaces in the path, e.g. `C:\\tools\\whisper.cpp\\`.\n'
-          + '   The folder should contain `whisper-cli.exe` (older builds: `main.exe`).\n'
-          + '3. Make the binary discoverable in one of two ways:\n'
-          + '   • Add the folder to your system PATH, **or**\n'
-          + '   • Set `WHISPER_CPP_BIN=C:\\tools\\whisper.cpp\\whisper-cli.exe` in your `.env`.\n'
-          + '4. Download a GGML model from https://huggingface.co/ggerganov/whisper.cpp/tree/main.\n'
-          + '   Start with `ggml-base.en.bin` (142 MB, English-only, fast, decent accuracy).\n'
-          + '5. Place the model wherever you like and pass its full path:\n'
-          + '   `/config stt provider:whispercpp model_path:C:\\tools\\whisper.cpp\\ggml-base.en.bin`',
+          'The whisper.cpp models are read from the directory set by the env var `WHISPER_MODELS_DIR` '
+          + '(default: `<repo>/models`). Populate it with any of the GGML files below. '
+          + 'In Docker/fly.io deployments this is typically `/opt/whisper-models`.',
       },
       {
-        name: 'Recommended whisper.cpp models',
+        name: 'Supported whisper.cpp models',
+        value: modelsTable,
+      },
+      {
+        name: 'Local setup (dev)',
         value:
-          '`ggml-tiny.en.bin` — 75 MB, fastest, lower quality\n'
-          + '`ggml-base.en.bin` — 142 MB, balanced **(start here)**\n'
-          + '`ggml-small.en.bin` — 466 MB, better accuracy\n'
-          + '`ggml-medium.en.bin` — 1.5 GB, great accuracy, slower\n'
-          + '`ggml-large-v3.bin` — 3.1 GB, multilingual, best quality (GPU recommended)',
+          '1. Install whisper.cpp (https://github.com/ggerganov/whisper.cpp/releases) and make sure `whisper-cli` is on PATH or set `WHISPER_CPP_BIN` in `.env`.\n'
+          + '2. `mkdir models` in the repo root (or set `WHISPER_MODELS_DIR=<folder>` in `.env`).\n'
+          + '3. Download one or more GGML files from https://huggingface.co/ggerganov/whisper.cpp/tree/main into that folder.\n'
+          + '4. In Discord: `/config stt provider:whispercpp model:base.en`.',
       },
       {
-        name: 'OpenAI Whisper setup (cloud, simpler)',
+        name: 'Deployed setup (Docker / fly.io)',
+        value:
+          'Bake models into the image at a fixed path and set `WHISPER_MODELS_DIR=/opt/whisper-models`. '
+          + 'See `docs/hosting.md` for a ready-to-use Dockerfile. Users then switch models live with '
+          + '`/config stt model:<choice>` — no redeploy.',
+      },
+      {
+        name: 'OpenAI Whisper (cloud, simpler)',
         value:
           '1. Create an API key at https://platform.openai.com/api-keys.\n'
           + '2. `/config stt provider:openai api_key:sk-...`\n'
-          + 'Audio is uploaded to OpenAI for transcription. Billed per minute — see OpenAI pricing.',
+          + 'Audio is uploaded to OpenAI. Billed per minute — see OpenAI pricing.',
       },
-      { name: 'Test it', value: 'Run `/help` — the STT line will show ✅ once a valid `model_path` or `api_key` is set.' },
+      { name: 'Test it', value: 'Run `/help` — the STT line flips to ✅ when the model file is present or an `api_key` is set.' },
       { name: 'Permission', value: 'Manage Server, or the role configured via `/config role`.' }
     );
 }
@@ -299,7 +304,7 @@ function buildStatus(cfg) {
   const llmOk = !!cfg.llm_base_url && !!cfg.llm_model;
   const sttOk =
     cfg.stt_provider === 'whispercpp'
-      ? !!cfg.stt_model_path
+      ? !!(cfg.stt_model_name || cfg.stt_model_path)
       : cfg.stt_provider === 'openai'
         ? !!cfg.stt_api_key
         : false;
@@ -307,9 +312,11 @@ function buildStatus(cfg) {
 
   const sttDetail =
     cfg.stt_provider === 'whispercpp'
-      ? cfg.stt_model_path
-        ? `\`${cfg.stt_model_path}\``
-        : '**run `/config stt model_path:<path>`**'
+      ? cfg.stt_model_name
+        ? `model \`${cfg.stt_model_name}\``
+        : cfg.stt_model_path
+          ? `legacy path \`${cfg.stt_model_path}\``
+          : '**run `/config stt model:<choice>`**'
       : cfg.stt_provider === 'openai'
         ? cfg.stt_api_key
           ? 'api_key set'

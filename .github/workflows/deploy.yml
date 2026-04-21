@@ -1,0 +1,64 @@
+name: Deploy
+
+# Pulls the latest image on the deploy host and restarts the stack.
+# Triggered after a successful publish workflow, or manually.
+#
+# Required repository secrets (set under Settings → Secrets and variables → Actions):
+#   DEPLOY_SSH_HOST          e.g. ubuntu@203.0.113.4
+#   DEPLOY_SSH_KEY           full private key (PEM)
+#   DEPLOY_SSH_PORT          optional, defaults to 22
+#   DEPLOY_PROJECT_DIR       e.g. /opt/ai-call-summarizer (must contain docker-compose.yml and secrets/)
+#
+# If any of the required secrets are missing, the job is a no-op — safe to
+# leave disabled until you're ready to wire up deploys.
+
+on:
+  workflow_run:
+    workflows: [Publish image]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
+    timeout-minutes: 15
+    steps:
+      - name: Check required secrets
+        id: guard
+        run: |
+          if [ -z "${{ secrets.DEPLOY_SSH_HOST }}" ] \
+              || [ -z "${{ secrets.DEPLOY_SSH_KEY }}" ] \
+              || [ -z "${{ secrets.DEPLOY_PROJECT_DIR }}" ]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "Deploy secrets not configured — skipping."
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install SSH key
+        if: steps.guard.outputs.ready == 'true'
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -p "${{ secrets.DEPLOY_SSH_PORT || 22 }}" \
+            "${{ secrets.DEPLOY_SSH_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: Pull & restart stack
+        if: steps.guard.outputs.ready == 'true'
+        env:
+          HOST: ${{ secrets.DEPLOY_SSH_HOST }}
+          PORT: ${{ secrets.DEPLOY_SSH_PORT || 22 }}
+          DIR:  ${{ secrets.DEPLOY_PROJECT_DIR }}
+          IMAGE: ghcr.io/${{ github.repository }}:latest
+        run: |
+          ssh -p "$PORT" "$HOST" bash -se <<EOF
+          set -euo pipefail
+          cd "$DIR"
+          docker login ghcr.io -u "${{ github.actor }}" -p "${{ secrets.GITHUB_TOKEN }}"
+          BOT_IMAGE="$IMAGE" docker compose pull bot
+          BOT_IMAGE="$IMAGE" docker compose up -d
+          docker image prune -f
+          EOF

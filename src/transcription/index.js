@@ -4,7 +4,10 @@ const { createOpenAIWhisperTranscriber } = require('./openaiWhisper');
 function getTranscriber(guildCfg) {
   switch (guildCfg.stt_provider) {
     case 'whispercpp':
-      return createWhisperCppTranscriber({ modelPath: guildCfg.stt_model_path });
+      return createWhisperCppTranscriber({
+        modelName: guildCfg.stt_model_name,
+        modelPath: guildCfg.stt_model_path,
+      });
     case 'openai':
       return createOpenAIWhisperTranscriber({ apiKey: guildCfg.stt_api_key });
     default:

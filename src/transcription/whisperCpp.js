@@ -2,22 +2,18 @@ const { spawn } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
 const { createLogger } = require('../utils/logger');
+const {
+  modelsDir,
+  modelPath: resolveModelPath,
+  modelFilename,
+  listSupported,
+} = require('./whisperModels');
 
 const log = createLogger('stt:whispercpp');
 
-function createWhisperCppTranscriber({ modelPath }) {
-  if (!modelPath) {
-    throw new Error(
-      'whisper.cpp requires a model path. Run `/config stt provider:whispercpp model_path:<path to ggml-*.bin>`.'
-    );
-  }
-  if (!fs.existsSync(modelPath)) {
-    throw new Error(
-      `whisper.cpp model file not found at: ${modelPath}\n`
-      + 'Download one from https://huggingface.co/ggerganov/whisper.cpp/tree/main '
-      + 'and update the path via `/config stt model_path:<full path>`.'
-    );
-  }
+function createWhisperCppTranscriber({ modelName, modelPath: legacyPath }) {
+  const modelPath = resolveModelFile({ modelName, legacyPath });
+
   const requested = process.env.WHISPER_CPP_BIN || 'whisper-cli';
   const binary = resolveBinary(requested);
   if (!binary) {
@@ -27,7 +23,7 @@ function createWhisperCppTranscriber({ modelPath }) {
       + 'then either add its folder to PATH or set WHISPER_CPP_BIN=<full path to whisper-cli.exe> in .env.'
     );
   }
-  log.info('transcriber ready', { binary, modelPath });
+  log.info('transcriber ready', { binary, modelPath, modelName: modelName || null });
 
   return {
     async transcribe(wavPath) {
@@ -89,6 +85,57 @@ function runWhisper(binary, modelPath, wavPath) {
       }
     });
   });
+}
+
+function resolveModelFile({ modelName, legacyPath }) {
+  if (modelName) {
+    if (!listSupported().includes(modelName)) {
+      throw new Error(
+        `Unsupported whisper model '${modelName}'. Supported: ${listSupported().join(', ')}.`
+      );
+    }
+    const resolved = resolveModelPath(modelName);
+    if (!fs.existsSync(resolved)) {
+      const dir = modelsDir();
+      const available = safeListBinFiles(dir);
+      throw new Error(
+        `whisper.cpp model '${modelName}' not found at: ${resolved}\n`
+        + `Expected file: ${modelFilename(modelName)} inside ${dir}\n`
+        + (available.length
+          ? `Available in that folder: ${available.join(', ')}`
+          : `That folder is empty or missing. Download models from `
+            + `https://huggingface.co/ggerganov/whisper.cpp/tree/main and place them there, `
+            + `or set WHISPER_MODELS_DIR=<folder> in .env.`)
+      );
+    }
+    return resolved;
+  }
+
+  if (legacyPath) {
+    if (!fs.existsSync(legacyPath)) {
+      throw new Error(
+        `whisper.cpp model file not found at: ${legacyPath}\n`
+        + 'Fix via `/config stt model:<choice>` (recommended), or update the legacy path.'
+      );
+    }
+    return legacyPath;
+  }
+
+  throw new Error(
+    'No whisper.cpp model configured. Run `/config stt model:<choice>` (e.g. base.en). '
+    + 'Models are read from WHISPER_MODELS_DIR (default: ./models).'
+  );
+}
+
+function safeListBinFiles(dir) {
+  try {
+    return fs
+      .readdirSync(dir)
+      .filter((f) => f.endsWith('.bin'))
+      .sort();
+  } catch {
+    return [];
+  }
 }
 
 function resolveBinary(name) {
