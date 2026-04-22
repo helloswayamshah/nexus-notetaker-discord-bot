@@ -5,7 +5,6 @@
 **/.idea
 data
 models
-secrets
 .env
 .env.*
 !.env.example

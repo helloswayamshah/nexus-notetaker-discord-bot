@@ -17,10 +17,12 @@ name: ai-call-summarizer
 #   whisper-models   /opt/whisper-models
 #   ollama-models    /root/.ollama (Ollama blob store + manifests)
 #
-# Secrets:
-#   Files in ./secrets/*.txt are mounted at /run/secrets/* inside the bot
-#   container by Docker's secrets mechanism (tmpfs-backed, not env vars).
-#   The bot's secrets loader prefers those files; falls back to env in dev.
+# Infra credentials:
+#   DISCORD_TOKEN and DISCORD_APP_ID come from .env in this directory.
+#   Compose substitutes them into the `environment:` block at up-time.
+#
+# User-provided keys (OpenAI Whisper, future hosted LLMs) are stored per-guild
+# in SQLite via `/config stt api_key:...` — they are not infra secrets.
 #
 # Scaling hooks:
 #   - Ollama can be replaced by a hosted LLM by removing the ollama +
@@ -56,18 +58,22 @@ services:
       NODE_ENV: production
       LOG_LEVEL: ${LOG_LEVEL:-info}
       LOG_FORMAT: ${LOG_FORMAT:-json}
-      # Bot-side defaults are baked into the image, re-declared here for clarity.
+      # Infra credentials — populated by compose from .env in the project dir.
+      # The ":?..." form fails `docker compose up` with a clear error if unset.
+      DISCORD_TOKEN: ${DISCORD_TOKEN:?DISCORD_TOKEN must be set in .env}
+      DISCORD_APP_ID: ${DISCORD_APP_ID:?DISCORD_APP_ID must be set in .env}
+      DISCORD_DEV_GUILD_ID: ${DISCORD_DEV_GUILD_ID:-}
+      # Master key used to AES-256-GCM encrypt user-provided API keys
+      # (e.g. OpenAI Whisper) before they're stored in SQLite.
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?ENCRYPTION_KEY must be set in .env (generate 32 bytes, base64)}
+      # Bot-side paths are baked into the image, re-declared here for clarity.
       WHISPER_CPP_BIN: /usr/local/bin/whisper-cli
       WHISPER_MODELS_DIR: /opt/whisper-models
-      SECRETS_DIR: /run/secrets
       # Applied to newly-inserted guild_config rows. Existing rows keep their
       # configured base URL, so rerunning `/config llm base_url:...` is always
       # the escape hatch.
       LLM_DEFAULT_BASE_URL: http://ollama:11434
       LLM_DEFAULT_MODEL: ${LLM_DEFAULT_MODEL:-llama3.1}
-    secrets:
-      - discord_token
-      - discord_app_id
     volumes:
       - bot-data:/app/data
       - whisper-models:/opt/whisper-models:ro
@@ -170,9 +176,3 @@ volumes:
     name: summarizer_whisper_models
   ollama-models:
     name: summarizer_ollama_models
-
-secrets:
-  discord_token:
-    file: ./secrets/discord_token.txt
-  discord_app_id:
-    file: ./secrets/discord_app_id.txt

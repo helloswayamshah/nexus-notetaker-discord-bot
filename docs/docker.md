@@ -49,6 +49,74 @@ is all outbound. This is a private-by-default stack.
 | `summarizer_whisper_models` | `/opt/whisper-models`   | `ggml-*.bin` files                       |
 | `summarizer_ollama_models`  | `/root/.ollama`         | Ollama manifests + blobs                 |
 
+## Build and run locally (Windows laptop)
+
+While your Oracle VM is being provisioned, you can run the full stack on
+your laptop against Docker Desktop — same `docker-compose.yml`, same
+images, same behavior.
+
+1. **Install Docker Desktop** from https://www.docker.com/products/docker-desktop/
+   and start it. Verify:
+   ```powershell
+   docker info
+   docker compose version
+   ```
+
+2. **Create `.env`** from the template in the project root:
+   ```powershell
+   copy .env.example .env
+   notepad .env
+   ```
+   Fill in these three values:
+   ```
+   DISCORD_TOKEN=<your Discord bot token>
+   DISCORD_APP_ID=<your Discord app ID>
+   ENCRYPTION_KEY=<32 random bytes, base64>
+   ```
+   Generate the encryption key (if Node is installed on your host):
+   ```powershell
+   node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+   ```
+   If Node isn't on the host, generate it inside a container:
+   ```powershell
+   docker run --rm node:20-alpine node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+   ```
+
+3. **Run the helper script** (it validates `.env`, builds the image, brings
+   the stack up, and tails bot logs):
+   ```
+   docker-run-locally.bat
+   ```
+   First boot takes ~10 minutes — it builds whisper.cpp (~2 min), installs
+   Node deps, downloads 3 whisper models (~680 MB), and pulls `llama3.1`
+   (~4.7 GB). All of that is cached in named volumes, so subsequent
+   `docker-run-locally.bat restart` takes ~30 s.
+
+4. **Configure the bot in Discord** (once per server, Manage Server role):
+   ```
+   /config channel channel:#summaries
+   /config stt provider:whispercpp model:base.en
+   /help
+   ```
+   The LLM base URL and default model were auto-populated (`http://ollama:11434`,
+   `llama3.1`) by the compose environment, so `/config llm` isn't needed.
+
+5. **Manage the stack**:
+   ```
+   docker-run-locally.bat status       show running containers
+   docker-run-locally.bat logs         tail bot logs
+   docker-run-locally.bat restart      rebuild bot and restart
+   docker-run-locally.bat down         stop everything (keep volumes)
+   docker-run-locally.bat clean        wipe all volumes (destructive)
+   ```
+
+Linux / macOS equivalent (no `.bat`, same idea):
+```bash
+cp .env.example .env && $EDITOR .env   # fill in the 3 required values
+docker compose up -d --build
+docker compose logs -f bot
+```
+
 ## One-time deploy host setup
 
 You need a machine with Docker + Docker Compose v2. For example, on Ubuntu:
@@ -66,14 +134,18 @@ docker compose version   # should report v2.x
    git clone <your repo URL> /opt/ai-call-summarizer
    cd /opt/ai-call-summarizer
    ```
-2. Create the two required secret files — real values, no trailing newline:
+2. Create `.env` from the template and fill in the Discord credentials
+   (compose reads this file automatically for `${VAR}` substitution):
    ```bash
-   mkdir -p secrets
-   printf '%s' 'YOUR_DISCORD_BOT_TOKEN' > secrets/discord_token.txt
-   printf '%s' 'YOUR_DISCORD_APP_ID'    > secrets/discord_app_id.txt
-   chmod 600 secrets/*.txt
+   cp .env.example .env
+   $EDITOR .env
    ```
-3. Optional `.env` for non-secret settings (all have sensible defaults):
+   At minimum, set:
+   ```
+   DISCORD_TOKEN=...
+   DISCORD_APP_ID=...
+   ```
+   Optional knobs also live in `.env` (all have sensible defaults):
    ```
    LOG_LEVEL=info
    LOG_FORMAT=json
@@ -144,46 +216,55 @@ before you're ready to turn it on.
   LOG_LEVEL=debug docker compose up -d bot
   ```
 
-## Secrets
+## Credentials
 
-The default flow uses Docker Compose's native `secrets:` mechanism, which
-mounts files from `./secrets/*.txt` at `/run/secrets/<name>` inside the bot
-container. Those files:
+Two separate concerns, handled separately:
 
-- Are backed by tmpfs (never written to the container's writable layer).
-- Are **not** visible as environment variables (no leak via `/proc/<pid>/environ`).
-- Are read by the bot's loader at [src/config/secrets.js](../src/config/secrets.js),
-  which falls back to env vars when the file is missing — so local `npm
-  start` with `.env` still works.
+### Infrastructure credentials (Discord token / app ID)
 
-### Rotating a secret
+Live in `.env` at the project root. Compose reads this file automatically
+and expands `${DISCORD_TOKEN}` / `${DISCORD_APP_ID}` into the bot
+container's environment. The `:?` form in `docker-compose.yml` means
+`docker compose up` **fails fast with a clear error** if either is unset —
+no silent boots with broken creds.
 
-```bash
-printf '%s' 'new-token-value' > secrets/discord_token.txt
-docker compose up -d bot     # container restarts, re-reads the file
+- `.env` is gitignored, so real values never get committed.
+- `.env.example` is tracked and shows the full list of supported variables.
+- Rotating is `nano .env && docker compose up -d bot` — container restarts,
+  picks up new values.
+
+### User-provided API keys (OpenAI Whisper, etc.)
+
+These are **per-guild**, set at runtime via slash commands, and **encrypted
+at rest** in SQLite under `data/bot.db` (see `guild_config.stt_api_key`).
+They're not infrastructure secrets and they don't go in `.env` — different
+guilds legitimately use different keys.
+
+```
+/config stt provider:openai api_key:sk-...
 ```
 
-### Upgrading to HashiCorp Vault
+Encryption details:
+- **Algorithm:** AES-256-GCM with a fresh random 12-byte IV per value.
+- **Master key:** `ENCRYPTION_KEY` in `.env` — 32 bytes, base64 or hex.
+- **Stored shape:** `v1:<iv>:<auth_tag>:<ciphertext>` (all base64).
+- **On read:** decrypted just-in-time by the transcription layer; `/config
+  show` never decrypts — it shows `🔒 set (encrypted)` or
+  `⚠️ set (plaintext — rotate)`.
+- **Rotating the master key:** change `ENCRYPTION_KEY`, redeploy, then
+  users rerun `/config stt api_key:...` (old ciphertext becomes
+  unreadable — which is the security property you want).
 
-For multi-service production or auditable secret access, swap the
-`file:`-backed secrets for a Vault-Agent sidecar by layering in the
-overlay file:
-
+Generate a fresh master key:
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.vault.yml up -d
+node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 ```
 
-See [`docker-compose.vault.yml`](../docker-compose.vault.yml) — it adds:
-
-- `vault` — a Vault server (dev mode out of the box; point it at Raft /
-  Consul for prod).
-- `vault-agent` — authenticates with Vault via AppRole, renders
-  `discord_token` / `discord_app_id` into a tmpfs volume, keeps them
-  refreshed when they rotate in Vault.
-
-The bot's secrets loader is unchanged — only the **source** of the files
-changes. You won't need to rebuild or restart the bot when rotating in
-Vault.
+The SQLite file lives in the `summarizer_bot_data` named volume, so it
+survives deploys and container recreation. If the volume is compromised,
+stored API keys remain AES-GCM-encrypted under a key that is **not in
+the volume** — the attacker also needs `ENCRYPTION_KEY` from `.env` or
+the runtime env.
 
 ## Scaling hooks
 
@@ -207,7 +288,8 @@ The architecture is deliberately modular:
 
 | Symptom                                            | Likely cause                                              | Fix                                                              |
 |----------------------------------------------------|-----------------------------------------------------------|------------------------------------------------------------------|
-| `summarizer-bot` exits with "missing required secrets" | `secrets/*.txt` empty or wrong value                    | Recreate files, `docker compose up -d bot`                       |
+| `docker compose up` aborts with "DISCORD_TOKEN must be set in .env" | `.env` missing or placeholders not replaced     | Edit `.env`, re-run `docker compose up -d`                       |
+| Bot exits with "missing required env"              | `.env` not loaded (running compose from wrong dir)        | `cd` into the project root before `docker compose …`             |
 | Bot says LLM error / `connect ECONNREFUSED`        | Ollama healthcheck hasn't gone green yet                  | `docker compose logs ollama` — wait for "Listening on 0.0.0.0:11434" |
 | `whisper-models-init` fails with 403/429           | HuggingFace rate limit                                    | Rerun; files already downloaded are skipped                      |
 | Summary generation very slow                       | Using `medium.en`/`large-v3` on a small VM                | `/config stt model:base.en`                                      |

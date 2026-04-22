@@ -7,6 +7,7 @@ const {
 const guildConfig = require('../config/guildConfig');
 const { canConfigure } = require('../utils/permissions');
 const { MODELS } = require('../transcription/whisperModels');
+const { encrypt, isEncrypted } = require('../utils/crypto');
 
 const LLM_PROVIDERS = [{ name: 'ollama', value: 'ollama' }];
 const STT_PROVIDERS = [
@@ -123,7 +124,16 @@ async function handleStt(interaction) {
   const apiKey = interaction.options.getString('api_key');
   if (provider) patch.stt_provider = provider;
   if (model) patch.stt_model_name = model;
-  if (apiKey) patch.stt_api_key = apiKey;
+  if (apiKey) {
+    try {
+      patch.stt_api_key = encrypt(apiKey);
+    } catch (err) {
+      return interaction.reply({
+        content: `Could not store API key: ${err.message}`,
+        flags: MessageFlags.Ephemeral,
+      });
+    }
+  }
   if (Object.keys(patch).length === 0) {
     return interaction.reply({
       content: 'No STT fields provided. Pass at least one of `provider`, `model`, or `api_key`.',
@@ -131,7 +141,12 @@ async function handleStt(interaction) {
     });
   }
   guildConfig.update(interaction.guildId, patch);
-  return interaction.reply({ content: 'STT settings updated.', flags: MessageFlags.Ephemeral });
+  return interaction.reply({
+    content: apiKey
+      ? 'STT settings updated (API key encrypted at rest).'
+      : 'STT settings updated.',
+    flags: MessageFlags.Ephemeral,
+  });
 }
 
 async function handleChannel(interaction) {
@@ -155,7 +170,11 @@ async function handleRole(interaction) {
 }
 
 async function handleShow(interaction, cfg) {
-  const mask = (v) => (v ? `${v.slice(0, 4)}...${v.slice(-2)}` : '_(unset)_');
+  // Never decrypt or preview API keys here — this is a display-only path.
+  const keyStatus = (v) => {
+    if (!v) return '_(unset)_';
+    return isEncrypted(v) ? '🔒 set (encrypted)' : '⚠️ set (plaintext — rotate to encrypt)';
+  };
   const sttDetail =
     cfg.stt_provider === 'whispercpp'
       ? cfg.stt_model_name
@@ -164,7 +183,7 @@ async function handleShow(interaction, cfg) {
           ? `legacy path: \`${cfg.stt_model_path}\``
           : '_(no model set — run `/config stt model:<choice>`)_'
       : cfg.stt_provider === 'openai'
-        ? `api key: ${mask(cfg.stt_api_key)}`
+        ? `api key: ${keyStatus(cfg.stt_api_key)}`
         : '';
   const embed = new EmbedBuilder()
     .setTitle('AI Call Summarizer — Configuration')
@@ -174,7 +193,7 @@ async function handleShow(interaction, cfg) {
       { name: 'LLM model', value: cfg.llm_model, inline: true },
       { name: 'STT provider', value: cfg.stt_provider, inline: true },
       { name: 'STT model', value: sttDetail || '_(unset)_', inline: true },
-      { name: 'STT API key', value: mask(cfg.stt_api_key), inline: true },
+      { name: 'STT API key', value: keyStatus(cfg.stt_api_key), inline: true },
       {
         name: 'Summary channel',
         value: cfg.summary_channel_id ? `<#${cfg.summary_channel_id}>` : '_(unset)_',

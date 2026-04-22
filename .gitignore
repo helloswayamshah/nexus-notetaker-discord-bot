@@ -5,8 +5,3 @@ node_modules/
 data/
 models/
 *.log
-
-# Secrets — keep the folder + README tracked, ignore real secret files.
-secrets/*
-!secrets/README.md
-!secrets/.gitkeep

@@ -73,7 +73,6 @@ RUN mkdir -p /app/data /opt/whisper-models \
 ENV NODE_ENV=production \
     WHISPER_CPP_BIN=/usr/local/bin/whisper-cli \
     WHISPER_MODELS_DIR=/opt/whisper-models \
-    SECRETS_DIR=/run/secrets \
     LOG_LEVEL=info \
     LOG_FORMAT=json
 
