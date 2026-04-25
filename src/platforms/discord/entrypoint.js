@@ -9,12 +9,9 @@ async function start() {
   const DEV_GUILD_ID = process.env.DISCORD_DEV_GUILD_ID || null;
 
   if (!TOKEN || !APP_ID) {
-    log.error('missing required env', {
-      DISCORD_TOKEN: !!TOKEN,
-      DISCORD_APP_ID: !!APP_ID,
-      hint: 'Set DISCORD_TOKEN and DISCORD_APP_ID in .env (local) or pass them through docker-compose.',
-    });
-    process.exit(1);
+    throw new Error(
+      'Discord: missing required env vars — set DISCORD_TOKEN and DISCORD_APP_ID in .env or docker-compose.',
+    );
   }
 
   const gateway = new DiscordCommandGateway({ token: TOKEN, appId: APP_ID, devGuildId: DEV_GUILD_ID });
@@ -34,7 +31,7 @@ async function start() {
     await gateway.start();
   } catch (err) {
     log.error('startup failed', { err });
-    process.exit(1);
+    throw err;
   }
 }
 
