@@ -27,20 +27,58 @@ if (hasGuildConfig && !hasTenantConfig) {
     db.exec('ALTER TABLE guild_config ADD COLUMN stt_model_name TEXT');
   }
 
-  // Migrate: rename table, add platform column, rename guild_id → tenant_id.
-  db.exec(`
-    ALTER TABLE guild_config RENAME TO tenant_config;
-    ALTER TABLE tenant_config ADD COLUMN platform TEXT NOT NULL DEFAULT 'discord';
-    ALTER TABLE tenant_config RENAME COLUMN guild_id TO tenant_id;
-  `);
+  // Rebuild the table instead of renaming in place so the legacy
+  // guild_id TEXT PRIMARY KEY constraint is not preserved on tenant_id.
+  const migrateGuildConfig = db.transaction(() => {
+    db.exec(`
+      CREATE TABLE tenant_config (
+        tenant_id          TEXT NOT NULL,
+        platform           TEXT NOT NULL DEFAULT 'discord',
+        llm_provider       TEXT NOT NULL DEFAULT 'ollama',
+        llm_base_url       TEXT NOT NULL DEFAULT 'http://localhost:11434',
+        llm_model          TEXT NOT NULL DEFAULT 'llama3.1',
+        stt_provider       TEXT NOT NULL DEFAULT 'whispercpp',
+        stt_model_path     TEXT,
+        stt_model_name     TEXT,
+        stt_api_key        TEXT,
+        summary_channel_id TEXT,
+        config_role_id     TEXT,
+        updated_at         INTEGER NOT NULL
+      );
+      INSERT INTO tenant_config (
+        tenant_id,
+        platform,
+        llm_provider,
+        llm_base_url,
+        llm_model,
+        stt_provider,
+        stt_model_path,
+        stt_model_name,
+        stt_api_key,
+        summary_channel_id,
+        config_role_id,
+        updated_at
+      )
+      SELECT
+        guild_id,
+        'discord',
+        llm_provider,
+        llm_base_url,
+        llm_model,
+        stt_provider,
+        stt_model_path,
+        stt_model_name,
+        stt_api_key,
+        summary_channel_id,
+        config_role_id,
+        updated_at
+      FROM guild_config;
+      DROP TABLE guild_config;
+      CREATE UNIQUE INDEX tenant_config_pk ON tenant_config(platform, tenant_id);
+    `);
+  });
 
-  // Create composite unique index.
-  const idxExists = db.prepare(
-    "SELECT name FROM sqlite_master WHERE type='index' AND name='tenant_config_pk'"
-  ).get();
-  if (!idxExists) {
-    db.exec('CREATE UNIQUE INDEX tenant_config_pk ON tenant_config(platform, tenant_id)');
-  }
+  migrateGuildConfig();
 } else if (!hasTenantConfig) {
   // Fresh install — create new schema directly.
   db.exec(`

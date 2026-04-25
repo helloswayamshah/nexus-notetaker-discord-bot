@@ -22,7 +22,7 @@ const ALLOWED_FIELDS = new Set([
 ]);
 
 class SqliteTenantStore extends TenantConfigStore {
-  get({ platform, tenantId }) {
+  async get({ platform, tenantId }) {
     let row = selectStmt.get(platform, tenantId);
     if (!row) {
       const llmBaseUrl =
@@ -34,7 +34,7 @@ class SqliteTenantStore extends TenantConfigStore {
     return row;
   }
 
-  update({ platform, tenantId }, patch) {
+  async update({ platform, tenantId }, patch) {
     this.get({ platform, tenantId });
     const keys = Object.keys(patch).filter((k) => ALLOWED_FIELDS.has(k));
     if (keys.length === 0) return this.get({ platform, tenantId });

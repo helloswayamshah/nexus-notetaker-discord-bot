@@ -22,8 +22,9 @@ async function start() {
   for (const signal of ['SIGINT', 'SIGTERM']) {
     process.on(signal, () => {
       log.info('shutdown', { signal });
-      gateway.stop();
-      process.exit(0);
+      gateway.stop().finally(() => {
+        process.exit(0);
+      });
     });
   }
 
