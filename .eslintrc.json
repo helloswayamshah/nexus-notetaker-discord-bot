@@ -1,0 +1,25 @@
+{
+  "root": true,
+  "env": {
+    "node": true,
+    "es2022": true
+  },
+  "parserOptions": {
+    "ecmaVersion": 2022
+  },
+  "overrides": [
+    {
+      "files": ["src/core/**/*.js"],
+      "rules": {
+        "no-restricted-imports": ["error", {
+          "patterns": [
+            {
+              "group": ["discord.js", "@discordjs/*", "@slack/*", "@slack/bolt", "zoom-*", "@zoom/*"],
+              "message": "Platform SDKs must not be imported inside src/core/. Move this code to src/platforms/<platform>/."
+            }
+          ]
+        }]
+      }
+    }
+  ]
+}
