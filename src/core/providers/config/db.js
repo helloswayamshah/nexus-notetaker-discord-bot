@@ -99,10 +99,16 @@ if (hasGuildConfig && !hasTenantConfig) {
     CREATE UNIQUE INDEX IF NOT EXISTS tenant_config_pk ON tenant_config(platform, tenant_id);
   `);
 } else {
-  // tenant_config already exists (already migrated) — ensure stt_model_name column exists.
+  // tenant_config already exists (already migrated) — ensure stt_model_name column and index exist.
   const cols = db.prepare('PRAGMA table_info(tenant_config)').all();
   if (!cols.some((c) => c.name === 'stt_model_name')) {
     db.exec('ALTER TABLE tenant_config ADD COLUMN stt_model_name TEXT');
+  }
+  const hasIndex = db.prepare(
+    "SELECT name FROM sqlite_master WHERE type='index' AND name='tenant_config_pk'"
+  ).get();
+  if (!hasIndex) {
+    db.exec('CREATE UNIQUE INDEX tenant_config_pk ON tenant_config(platform, tenant_id)');
   }
 }
 
