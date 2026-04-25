@@ -20,10 +20,10 @@ async function main() {
   const active = PLATFORMS.filter((p) => process.env[p.flag] === 'true');
 
   if (active.length === 0) {
-    log.warn('no platforms enabled', {
+    log.error('no platforms enabled', {
       hint: 'Set ENABLE_DISCORD=true and/or ENABLE_SLACK=true',
     });
-    return;
+    process.exit(1);
   }
 
   const results = await Promise.allSettled(
@@ -52,3 +52,4 @@ main().catch((err) => {
   log.error('fatal startup error', { err });
   process.exit(1);
 });
+

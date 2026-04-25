@@ -118,6 +118,9 @@ async function execute(interaction) {
         return interaction.editReply(
           `Transcription produced no usable text (failed segments: ${result.failedSegments}). Check logs for details.`
         );
+      case 'llm_error':
+        flowTimer.fail('leave flow (llm error)', result.llmErr);
+        return interaction.editReply(`LLM error: ${result.llmErr.message}`);
       case 'ok':
         flowTimer.end('leave flow ok');
         return interaction.editReply(`Summary posted to <#${summaryChannel.id}>.`);

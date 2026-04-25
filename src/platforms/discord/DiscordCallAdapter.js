@@ -14,7 +14,7 @@ class DiscordCallAdapter extends CallAdapter {
   }
 
   async start() {
-    this.session.start();
+    await this.session.start();
   }
 
   async stop() {

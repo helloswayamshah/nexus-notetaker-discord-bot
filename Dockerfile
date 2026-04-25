@@ -53,7 +53,7 @@ FROM node:20-bookworm-slim AS runtime
 # tini gives us a real PID 1 for clean signal handling.
 RUN apt-get update \
   && apt-get install -y --no-install-recommends \
-       ca-certificates libgomp1 tini \
+       ca-certificates libgomp1 tini ffmpeg \
   && rm -rf /var/lib/apt/lists/* \
   && groupadd -r -g 1001 bot \
   && useradd  -r -u 1001 -g bot -d /app -s /usr/sbin/nologin bot
@@ -63,6 +63,7 @@ WORKDIR /app
 COPY --from=whisper-builder /src/whisper.cpp/build/bin/whisper-cli /usr/local/bin/whisper-cli
 COPY --from=deps             /app/node_modules                    ./node_modules
 COPY --chown=bot:bot         src                                  ./src
+COPY --chown=bot:bot         bin                                  ./bin
 COPY --chown=bot:bot         package.json                         ./
 
 # Data directory is mounted from a named volume at runtime; create it so

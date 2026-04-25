@@ -125,8 +125,14 @@ async function runSummarization({
 
   if (onProgress) await onProgress('Generating summary...');
 
-  const summary = await summarize(llm, transcript);
-  logger.info('summary generated', { chars: summary.length });
+  let summary;
+  try {
+    summary = await summarize(llm, transcript);
+    logger.info('summary generated', { chars: summary.length });
+  } catch (err) {
+    logger.error('summarize failed', { err });
+    return { status: 'llm_error', llmErr: err, utterances: utterances.length };
+  }
 
   const header = sinkContext.header || 'Call summary';
   await sink.post({ header, summary, transcript, context: sinkContext });
