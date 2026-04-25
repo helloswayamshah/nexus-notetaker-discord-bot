@@ -1,7 +1,8 @@
 const { AttachmentBuilder } = require('discord.js');
 const { NotificationSink } = require('../../core/interfaces/NotificationSink');
 
-const MAX_DISCORD_MESSAGE = 1800;
+const DISCORD_CHAR_LIMIT = 2000;
+const TRUNCATION_SUFFIX = '\n\n... (truncated — see transcript.txt)';
 
 /**
  * Discord notification sink. Posts summary + transcript attachment to a text channel.
@@ -20,12 +21,14 @@ class DiscordNotificationSink extends NotificationSink {
     const attachment = new AttachmentBuilder(Buffer.from(transcript, 'utf8'), {
       name: 'transcript.txt',
     });
+    const separator = '\n\n';
+    const budget = DISCORD_CHAR_LIMIT - header.length - separator.length;
     const body =
-      summary.length > MAX_DISCORD_MESSAGE
-        ? summary.slice(0, MAX_DISCORD_MESSAGE) + '\n\n... (truncated — see transcript.txt)'
+      summary.length > budget
+        ? summary.slice(0, budget - TRUNCATION_SUFFIX.length) + TRUNCATION_SUFFIX
         : summary;
-    await summaryChannel.send({ content: `${header}\n\n${body}`, files: [attachment] });
+    await summaryChannel.send({ content: `${header}${separator}${body}`, files: [attachment] });
   }
 }
 
-module.exports = { DiscordNotificationSink, MAX_DISCORD_MESSAGE };
+module.exports = { DiscordNotificationSink, DISCORD_CHAR_LIMIT };
