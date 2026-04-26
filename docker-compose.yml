@@ -17,9 +17,11 @@ name: ai-call-summarizer
 #   whisper-models   /opt/whisper-models
 #   ollama-models    /root/.ollama (Ollama blob store + manifests)
 #
-# Infra credentials:
-#   DISCORD_TOKEN and DISCORD_APP_ID come from .env in this directory.
-#   Compose substitutes them into the `environment:` block at up-time.
+# Credentials and configuration:
+#   All values come from .env.production in this directory.
+#   Compose loads it via `env_file:` and substitutes variables at up-time.
+#   The ":?..." form on required vars aborts `docker compose up` with a clear
+#   error if they are missing from the file.
 #
 # User-provided keys (OpenAI Whisper, future hosted LLMs) are stored per-guild
 # in SQLite via `/config stt api_key:...` — they are not infra secrets.
@@ -47,6 +49,8 @@ services:
     image: ${BOT_IMAGE:-ai-call-summarizer:local}
     container_name: summarizer-bot
     restart: unless-stopped
+    env_file:
+      - .env.production
     depends_on:
       whisper-models-init:
         condition: service_completed_successfully
@@ -56,22 +60,10 @@ services:
         condition: service_completed_successfully
     environment:
       NODE_ENV: production
-      LOG_LEVEL: ${LOG_LEVEL:-info}
-      LOG_FORMAT: ${LOG_FORMAT:-json}
-      # Infra credentials — populated by compose from .env in the project dir.
-      # The ":?..." form fails `docker compose up` with a clear error if unset.
-      DISCORD_TOKEN: ${DISCORD_TOKEN:?DISCORD_TOKEN must be set in .env}
-      DISCORD_APP_ID: ${DISCORD_APP_ID:?DISCORD_APP_ID must be set in .env}
-      DISCORD_DEV_GUILD_ID: ${DISCORD_DEV_GUILD_ID:-}
-      # Master key used to AES-256-GCM encrypt user-provided API keys
-      # (e.g. OpenAI Whisper) before they're stored in SQLite.
-      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?ENCRYPTION_KEY must be set in .env (generate 32 bytes, base64)}
-      # Bot-side paths are baked into the image, re-declared here for clarity.
+      # Bot-side paths are baked into the image; override anything in .env.production.
       WHISPER_CPP_BIN: /usr/local/bin/whisper-cli
       WHISPER_MODELS_DIR: /opt/whisper-models
-      # Applied to newly-inserted guild_config rows. Existing rows keep their
-      # configured base URL, so rerunning `/config llm base_url:...` is always
-      # the escape hatch.
+      # Point LLM at the in-stack Ollama service, regardless of what .env.production says.
       LLM_DEFAULT_BASE_URL: http://ollama:11434
       LLM_DEFAULT_MODEL: ${LLM_DEFAULT_MODEL:-llama3.1}
     volumes:

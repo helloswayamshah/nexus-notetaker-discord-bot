@@ -6,9 +6,10 @@ REM  Convenience wrapper around `docker compose` for Windows laptops.
 REM  Runs the full stack (bot + ollama + model init) locally against
 REM  Docker Desktop using the same docker-compose.yml production uses.
 REM
-REM  Credentials: put DISCORD_TOKEN, DISCORD_APP_ID, ENCRYPTION_KEY into
-REM  the .env file in this directory. Compose reads them automatically and
-REM  aborts `up` with a clear error if any is missing.
+REM  Credentials: put DISCORD_TOKEN, DISCORD_APP_ID, ENCRYPTION_KEY and
+REM  ENABLE_DISCORD=true into .env.production in this directory.
+REM  Compose loads it via env_file and aborts with a clear error if any
+REM  required value is missing.
 REM
 REM  Usage:
 REM    docker-run-locally.bat              default: up + tail logs
@@ -93,7 +94,6 @@ docker compose build bot
 if errorlevel 1 goto fail
 docker compose up -d bot
 if errorlevel 1 goto fail
-docker compose logs -f bot
 goto done
 
 REM -------------------------------------------------------------------------
@@ -147,21 +147,19 @@ exit /b 0
 
 REM -------------------------------------------------------------------------
 :check_env
-if not exist ".env" (
+if not exist ".env.production" (
   echo.
-  echo [docker-run-locally] ERROR: .env not found in this folder.
+  echo [docker-run-locally] ERROR: .env.production not found in this folder.
   echo.
   echo Copy the template and fill it in:
-  echo     copy .env.example .env
-  echo     notepad .env
+  echo     copy .env.example .env.production
+  echo     notepad .env.production
   echo.
-  echo Required values: DISCORD_TOKEN, DISCORD_APP_ID, ENCRYPTION_KEY
+  echo Required values: DISCORD_TOKEN, DISCORD_APP_ID, ENCRYPTION_KEY, ENABLE_DISCORD=true
   echo.
   echo Generate ENCRYPTION_KEY with one of:
   echo     node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
   echo     docker run --rm node:20-alpine node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
-  echo.
-  echo "docker compose up" will also print a specific error for any unset value.
   echo.
   exit /b 1
 )
@@ -184,8 +182,9 @@ echo   help          show this help
 echo.
 echo Prerequisites:
 echo   - Docker Desktop running
-echo   - .env in this folder with DISCORD_TOKEN, DISCORD_APP_ID, ENCRYPTION_KEY
-echo     (copy .env.example to .env and edit)
+echo   - .env.production in this folder with DISCORD_TOKEN, DISCORD_APP_ID,
+echo     ENCRYPTION_KEY, and ENABLE_DISCORD=true
+echo     (copy .env.example to .env.production and edit)
 echo.
 goto done
 
