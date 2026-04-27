@@ -14,22 +14,19 @@ const { handleReport } = require('./report');
 
 const COMMANDS = [
   {
-    name: '/hello',
-    description: 'Health-check — replies hello to the channel',
-    makeHandler: () => async ({ ack, respond, command }) => {
-      await ack();
-      await respond({ response_type: 'in_channel', text: `Hello <@${command.user_id}>! :wave: AI Call Summarizer is up and running.` });
-    },
+    name: '/summarize',
+    description: 'Summarize a channel\'s messages over a time window and post the result',
+    makeHandler: (deps) => (ctx) => handleReport({ ...ctx, ...deps }),
+  },
+  {
+    name: '/report',
+    description: 'Alias for /summarize — on-demand channel summary',
+    makeHandler: (deps) => (ctx) => handleReport({ ...ctx, ...deps }),
   },
   {
     name: '/config',
     description: 'Configure LLM, STT, channel schedules, and access roles',
     makeHandler: (deps) => (ctx) => handleConfig({ ...ctx, ...deps }),
-  },
-  {
-    name: '/report',
-    description: 'On-demand summary for a channel over a given time window',
-    makeHandler: (deps) => (ctx) => handleReport({ ...ctx, ...deps }),
   },
   {
     name: '/help',
@@ -44,17 +41,30 @@ const COMMANDS = [
 const HELP_TEXT = `
 *AI Call Summarizer — Slack Bot*
 
-*/hello* — Health-check
+*Summarize a channel*
+\`/summarize\` — Summarize the current channel (last 60 min)
+\`/summarize interval=30\` — Summarize the current channel (last 30 min)
+\`/summarize channel=#general\` — Summarize a specific channel
+\`/summarize channel=#general interval=120\` — Specific channel + custom window
+\`/report\` — Same as \`/summarize\`
 
-*/config llm* \`provider=ollama base_url=http://localhost:11434 model=llama3.1\`
-*/config stt* \`provider=whispercpp model=base.en\`
-*/config channel add* \`source=<#channel> output=<#channel> interval=60\`
-*/config channel remove* \`source=<#channel>\`
-*/config channel list*
-*/config role* \`<@user>\`
-*/config show*
+*Configuration* _(workspace admins or configured role only)_
+\`/config show\` — Show current settings
+\`/config llm provider=ollama base_url=http://localhost:11434 model=llama3.1\`
+\`/config stt provider=whispercpp model=base.en\`
+\`/config stt provider=openai api_key=sk-...\`
 
-*/report* \`channel=<#channel> interval=60\`
+*Scheduled summaries*
+\`/config channel add source=#standup output=#summaries interval=60\`
+\`/config channel remove source=#standup\`
+\`/config channel list\`
+
+*Access control*
+\`/config role @rolename\` — Grant a Slack user group config access
+\`/config role\` — Reset to workspace admins only
+
+*Help*
+\`/help\` — Show this message
 `.trim();
 
 module.exports = { COMMANDS };
