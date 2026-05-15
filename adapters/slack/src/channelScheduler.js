@@ -78,7 +78,7 @@ class ChannelScheduler {
       return;
     }
 
-    const tenantConfig = this._tenantConfigStore.get({ platform: 'slack', tenantId: workspaceId });
+    const tenantConfig = await this._tenantConfigStore.get({ platform: 'slack', tenantId: workspaceId });
 
     try {
       const newestTs = await runChannelSummary({

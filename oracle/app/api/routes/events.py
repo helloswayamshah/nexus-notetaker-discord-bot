@@ -19,6 +19,9 @@ from app.schemas.event import (
     EventRead, EventDetail, ParticipantRead,
 )
 from datetime import datetime
+from app.core.queue import task_queue
+from app.services.intelligence.pipeline import intelligence_pipeline
+
 
 router = APIRouter()
 
@@ -65,8 +68,16 @@ async def ingest_event(
 
     await session.flush()
 
-    # Phase 4: enqueue intelligence job here
-    # job_id = await task_queue.enqueue("process_event", {"event_id": str(event.id)})
+    # Phase 4: Enqueue Intelligence Pipeline
+    async def run_pipeline():
+        from app.database import async_session_factory
+        async with async_session_factory() as background_session:
+            await intelligence_pipeline.process_event(
+                background_session, org_id, event.id, callback_url=body.callback_url
+            )
+            await background_session.commit()
+
+    await task_queue.enqueue(run_pipeline)
 
     return EventIngestResponse(event_id=event.id, status="accepted")
 

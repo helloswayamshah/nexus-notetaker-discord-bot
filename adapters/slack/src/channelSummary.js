@@ -3,6 +3,7 @@ const { summarize } = require('../../../src/core/pipeline/summarize');
 const { SYSTEM_PROMPT, buildUserPrompt } = require('./prompts');
 const { getLLM } = require('../../../src/core/registry');
 const { SlackNotificationSink } = require('./SlackNotificationSink');
+const { oracleClient } = require('../../../src/core/providers/oracle');
 const { createLogger } = require('../../../src/core/utils/logger');
 
 const log = createLogger('slack:channelSummary');
@@ -98,7 +99,27 @@ async function runChannelSummary({ client, workspaceId, sourceChannel, outputCha
     context: { outputChannel, channelId: sourceChannel, messageCount: messages.length, periodDescription },
   });
 
+  // ── Phase 3: Oracle Reporting ──────────────────────────────────────
+  if (oracleClient.enabled) {
+    const uniqueUsers = [...new Set(messages.map(m => m.user).filter(Boolean))];
+    const participants = uniqueUsers.map(uid => ({ platform_id: uid, role: 'author' }));
+
+    await oracleClient.postEvent({
+      platform: 'slack',
+      event_type: 'chat_summary',
+      external_id: sourceChannel,
+      occurred_at: new Date().toISOString(),
+      participants,
+      raw_content: {
+        message_count: messages.length,
+        summary_length: summary.length,
+        transcript_length: transcript.length,
+      }
+    });
+  }
+
   return newestTs;
 }
 
 module.exports = { runChannelSummary };
+

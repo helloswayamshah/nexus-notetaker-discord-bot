@@ -47,7 +47,7 @@ async function handleReport({ command, ack, respond, client, tenantConfigStore }
     text: `:hourglass_flowing_sand: Generating summary for <#${channelId}> (last ${intervalMinutes} min)…`,
   });
 
-  const tenantConfig = tenantConfigStore.get({ platform: 'slack', tenantId: workspaceId });
+  const tenantConfig = await tenantConfigStore.get({ platform: 'slack', tenantId: workspaceId });
 
   try {
     const newestTs = await runChannelSummary({

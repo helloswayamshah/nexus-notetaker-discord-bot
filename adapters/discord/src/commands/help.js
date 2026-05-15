@@ -26,7 +26,7 @@ const data = new SlashCommandBuilder()
 
 async function execute(interaction) {
   const topic = interaction.options.getString('topic') || 'overview';
-  const cfg = tenantConfig.get({ platform: 'discord', tenantId: interaction.guildId });
+  const cfg = await tenantConfig.get({ platform: 'discord', tenantId: interaction.guildId });
   const embed = buildEmbed(topic, cfg);
   return interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
 }

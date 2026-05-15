@@ -42,7 +42,7 @@ async function execute(interaction) {
     return interaction.editReply(`Failed to stop recording: ${err.message}`);
   }
 
-  const cfg = tenantConfig.get({ platform: 'discord', tenantId: interaction.guildId });
+  const cfg = await tenantConfig.get({ platform: 'discord', tenantId: interaction.guildId });
   if (!cfg.summary_channel_id) {
     flowLog.warn('no summary channel configured');
     await cleanupSession(session.outDir, flowLog);
@@ -103,6 +103,8 @@ async function execute(interaction) {
       systemPrompt: SYSTEM_PROMPT,
       buildUserPrompt,
       onProgress: (msg) => interaction.editReply(msg),
+      platform: 'discord',
+      externalId: session.channelId,
     });
 
     await cleanupSession(session.outDir, flowLog);

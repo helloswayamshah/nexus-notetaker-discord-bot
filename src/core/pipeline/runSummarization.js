@@ -2,6 +2,7 @@ const fs = require('node:fs');
 const { pcmToWav } = require('../utils/audio');
 const { buildTranscript, collectSpeakerNames } = require('./buildTranscript');
 const { summarize } = require('./summarize');
+const { oracleClient } = require('../providers/oracle');
 
 /**
  * Platform-agnostic summarization pipeline.
@@ -20,6 +21,8 @@ const { summarize } = require('./summarize');
  * @param {(transcript: string, speakers: string[]) => string} opts.buildUserPrompt  builds the user message from transcript + speakers
  * @param {(msg: string) => Promise<void>} [opts.onProgress]  optional progress callback
  * @param {number} [opts.minSegmentBytes]    override for minimum segment size filter
+ * @param {string} [opts.platform]           optional platform identifier (discord/slack)
+ * @param {string} [opts.externalId]         optional external event ID (e.g. channel ID)
  */
 async function runSummarization({
   segments,
@@ -34,6 +37,8 @@ async function runSummarization({
   buildUserPrompt,
   onProgress,
   minSegmentBytes,
+  platform,
+  externalId,
 }) {
   const sampleRate = audioFormat.sampleRate;
   const channels = audioFormat.channels;
@@ -145,6 +150,29 @@ async function runSummarization({
   await sink.post({ header, summary, transcript, context: sinkContext });
   logger.info('summary posted');
 
+  // ── Phase 3: Oracle Reporting ──────────────────────────────────────
+  if (oracleClient.enabled && platform) {
+    const participants = segments.reduce((acc, s) => {
+      if (!acc.find(p => p.platform_id === s.userId)) {
+        acc.push({ platform_id: s.userId, role: 'speaker' });
+      }
+      return acc;
+    }, []);
+
+    await oracleClient.postEvent({
+      platform,
+      event_type: 'voice_call',
+      external_id: externalId,
+      occurred_at: new Date().toISOString(),
+      participants,
+      raw_content: {
+        utterance_count: utterances.length,
+        summary_length: summary.length,
+        transcript_length: transcript.length,
+      }
+    });
+  }
+
   return { status: 'ok', utterances: utterances.length, summary, transcript };
 }
 
@@ -170,3 +198,4 @@ async function cleanupSession(dir, logger) {
 }
 
 module.exports = { runSummarization, cleanupSession };
+

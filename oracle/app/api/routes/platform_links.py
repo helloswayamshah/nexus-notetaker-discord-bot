@@ -81,3 +81,39 @@ async def list_platform_links(
         )
         for l in links
     ]
+from app.models.enums import Platform
+
+@router.get("/resolve/{platform}/{external_id}", response_model=PlatformLinkRead)
+async def resolve_platform_link(
+    platform: Platform,
+    external_id: str,
+    session: AsyncSession = Depends(get_async_session),
+):
+    """
+    Resolve a platform-specific ID (e.g. Discord Guild ID) to a Nexus Org and config.
+    Used by adapters to identify themselves on startup.
+    """
+    stmt = select(PlatformLink).where(
+        PlatformLink.platform == platform,
+        PlatformLink.external_id == external_id
+    )
+    result = await session.execute(stmt)
+    link = result.scalar_one_or_none()
+    
+    if not link:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            f"No Nexus Org linked to {platform} ID {external_id}"
+        )
+
+    return PlatformLinkRead(
+        id=link.id,
+        org_id=link.org_id,
+        platform=link.platform,
+        external_id=link.external_id,
+        display_name=link.display_name,
+        has_credentials=link.credentials_encrypted is not None,
+        config_json=link.config_json,
+        created_at=link.created_at,
+        updated_at=link.updated_at,
+    )

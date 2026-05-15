@@ -6,7 +6,7 @@ async function handleConfig({ command, ack, respond, client, tenantConfigStore, 
 
   const workspaceId = command.team_id;
   const userId = command.user_id;
-  const tenantCfg = tenantConfigStore.get({ platform: 'slack', tenantId: workspaceId });
+  const tenantCfg = await tenantConfigStore.get({ platform: 'slack', tenantId: workspaceId });
 
   const checker = new SlackPermissionChecker(client);
   if (!await checker.canConfigure(userId, tenantCfg)) {
@@ -102,7 +102,7 @@ async function handleConfig({ command, ack, respond, client, tenantConfigStore, 
     }
 
     case 'show': {
-      const cfg = tenantConfigStore.get({ platform: 'slack', tenantId: workspaceId });
+      const cfg = await tenantConfigStore.get({ platform: 'slack', tenantId: workspaceId });
       const channels = channelConfigStore.listForWorkspace(workspaceId);
       const lines = [
         `*LLM:* ${cfg.llm_provider} / \`${cfg.llm_model}\` (${cfg.llm_base_url})`,

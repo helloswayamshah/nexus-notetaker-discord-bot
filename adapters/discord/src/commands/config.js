@@ -76,7 +76,7 @@ const data = new SlashCommandBuilder()
 
 async function execute(interaction) {
   const tenant = { platform: 'discord', tenantId: interaction.guildId };
-  const cfg = tenantConfig.get(tenant);
+  const cfg = await tenantConfig.get(tenant);
   if (!canConfigure(interaction, cfg)) {
     return interaction.reply({
       content:
