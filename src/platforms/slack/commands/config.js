@@ -89,7 +89,11 @@ async function handleConfig({ command, ack, respond, client, tenantConfigStore, 
     }
 
     case 'role': {
-      const roleId = rest[0] || '';
+      const roleArg = rest[0] || '';
+      const { roleId, error } = parseRoleUserId(roleArg);
+      if (error) {
+        return respond({ response_type: 'ephemeral', text: `:x: ${error}` });
+      }
       tenantConfigStore.update({ platform: 'slack', tenantId: workspaceId }, { slack_config_role: roleId });
       return respond({
         response_type: 'ephemeral',
@@ -134,6 +138,21 @@ function resolveChannelId(raw) {
   if (m) return m[1];
   if (/^[A-Z0-9]{6,}$/.test(raw)) return raw;
   return null;
+}
+
+function parseRoleUserId(raw) {
+  if (!raw) return { roleId: '' };
+
+  if (/^<!subteam\^[^>]+>$/.test(raw)) {
+    return { error: 'User-group mentions are not supported for `/config role`. Use an individual user mention like `@alice`.' };
+  }
+
+  const mentionMatch = raw.match(/^<@([UW][A-Z0-9]+)(?:\|[^>]*)?>$/);
+  if (mentionMatch) return { roleId: mentionMatch[1] };
+
+  if (/^[UW][A-Z0-9]+$/.test(raw)) return { roleId: raw };
+
+  return { error: 'Invalid role value. Use an individual user mention like `@alice`.' };
 }
 
 module.exports = { handleConfig };
