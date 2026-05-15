@@ -1,0 +1,21 @@
+{
+  "name": "@nexus/slack-adapter",
+  "version": "0.1.0",
+  "description": "Nexus Slack adapter — channel digests, scheduled summaries, and command gateway.",
+  "main": "src/entrypoint.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node -e \"require('dotenv').config({path:'../../.env'});require('./src/entrypoint').start().catch(e=>{console.error(e);process.exit(1)})\""
+  },
+  "engines": {
+    "node": ">=18.17"
+  },
+  "dependencies": {
+    "@slack/bolt": "^4.7.1",
+    "@slack/oauth": "^3.0.5",
+    "@slack/web-api": "^7.15.1",
+    "better-sqlite3": "^11.3.0",
+    "dotenv": "^16.4.5",
+    "undici": "^6.19.8"
+  }
+}

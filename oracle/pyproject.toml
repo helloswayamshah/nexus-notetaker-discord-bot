@@ -1,0 +1,49 @@
+[project]
+name = "nexus-oracle"
+version = "0.1.0"
+description = "Nexus Central AI Oracle — FastAPI service powering the knowledge graph."
+requires-python = ">=3.11"
+dependencies = [
+    # Core
+    "fastapi>=0.115,<1",
+    "uvicorn[standard]>=0.34,<1",
+    "pydantic>=2.11,<3",
+    "pydantic-settings>=2.9,<3",
+
+    # Database
+    "sqlalchemy[asyncio]>=2.0,<3",
+    "alembic>=1.15,<2",
+    "asyncpg>=0.30,<1",
+    "aiosqlite>=0.21,<1",
+    "greenlet>=3.2,<4",
+
+    # Auth
+    "python-jose[cryptography]>=3.4,<4",
+    "passlib[bcrypt]>=1.7,<2",
+    "python-multipart>=0.0.20",
+
+    # HTTP client (callbacks to adapters)
+    "httpx>=0.28,<1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.4,<9",
+    "pytest-asyncio>=0.26,<1",
+    "ruff>=0.11,<1",
+]
+
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
