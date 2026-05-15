@@ -55,9 +55,9 @@ async function handleConfig({ command, ack, respond, client, tenantConfigStore, 
         if (!source || !output) {
           return respond({ response_type: 'ephemeral', text: 'Usage: `/config channel add source=<#channel> output=<#channel> interval=60`' });
         }
-        const intervalMinutes = parseInt(cArgs.interval || '60', 10);
-        if (isNaN(intervalMinutes) || intervalMinutes < 1) {
-          return respond({ response_type: 'ephemeral', text: ':x: `interval` must be a positive number of minutes.' });
+        const intervalMinutes = Number(cArgs.interval || '60');
+        if (!Number.isFinite(intervalMinutes) || !Number.isInteger(intervalMinutes) || intervalMinutes < 1 || intervalMinutes > 10080) {
+          return respond({ response_type: 'ephemeral', text: ':x: `interval` must be an integer number of minutes between 1 and 10080.' });
         }
         channelConfigStore.set(workspaceId, source, { outputChannel: output, intervalMinutes });
         scheduler.reloadChannel(workspaceId, source);
