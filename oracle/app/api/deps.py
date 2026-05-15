@@ -66,15 +66,43 @@ async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
             raise
 
 
-# ── Auth dependency (stub — implemented fully in Phase 2) ────────────
+# ── Auth dependency ───────────────────────────────────────────────────
 
-async def get_current_user():
+_DEV_USER_ID = "00000000-0000-0000-0000-000000000000"
+_dev_user_seeded = False
+
+
+async def _ensure_dev_user(session: AsyncSession) -> None:
+    """Auto-seed a dev user row so FK constraints are satisfied."""
+    global _dev_user_seeded
+    if _dev_user_seeded:
+        return
+
+    from app.models.user import User
+
+    existing = await session.get(User, UUID(_DEV_USER_ID))
+    if not existing:
+        dev_user = User(
+            id=UUID(_DEV_USER_ID),
+            email="dev@nexus.local",
+            name="Dev User",
+        )
+        session.add(dev_user)
+        await session.flush()
+
+    _dev_user_seeded = True
+
+
+async def get_current_user(
+    session: AsyncSession = Depends(get_async_session),
+):
     """
-    STUB: Returns a placeholder user dict.
-    Phase 2 replaces this with real JWT validation.
+    DEV STUB: Returns a placeholder user dict and ensures the dev user exists in DB.
+    Full auth replaces this with real JWT validation.
     """
+    await _ensure_dev_user(session)
     return {
-        "user_id": "00000000-0000-0000-0000-000000000000",
+        "user_id": _DEV_USER_ID,
         "email": "dev@nexus.local",
         "name": "Dev User",
     }
@@ -86,7 +114,7 @@ async def require_org_access(
 ):
     """
     STUB: Verifies the current user has access to the given org.
-    Phase 2 replaces with real OrgMember lookup + role check.
+    Full auth replaces with real OrgMember lookup + role check.
     """
     # For now, allow all access in dev mode
     return user

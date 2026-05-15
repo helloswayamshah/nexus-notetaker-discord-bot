@@ -1,8 +1,8 @@
-"""initial schema — 11 tables
+"""initial schema - 11 tables
 
-Revision ID: ee175c71814a
+Revision ID: 9ba4a8b39c3f
 Revises: 
-Create Date: 2026-05-15 14:14:17.485330
+Create Date: 2026-05-15 14:55:29.552985
 """
 
 from typing import Sequence, Union
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = 'ee175c71814a'
+revision: str = '9ba4a8b39c3f'
 down_revision: Union[str, None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -24,15 +24,15 @@ def upgrade() -> None:
     sa.Column('slug', sa.String(length=64), nullable=False),
     sa.Column('display_name', sa.String(length=256), nullable=False),
     sa.Column('id', sa.Uuid(), nullable=False),
-    sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
-    sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
+    sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
+    sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index(op.f('ix_orgs_slug'), 'orgs', ['slug'], unique=True)
     op.create_table('users',
     sa.Column('email', sa.String(length=320), nullable=False),
     sa.Column('name', sa.String(length=256), nullable=False),
-    sa.Column('created_at', sa.DateTime(), nullable=False),
+    sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
     sa.Column('id', sa.Uuid(), nullable=False),
     sa.PrimaryKeyConstraint('id')
     )
@@ -61,8 +61,8 @@ def upgrade() -> None:
     sa.Column('credentials_encrypted', sa.Text(), nullable=True),
     sa.Column('config_json', sa.Text(), nullable=True),
     sa.Column('id', sa.Uuid(), nullable=False),
-    sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
-    sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
+    sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
+    sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
     sa.ForeignKeyConstraint(['org_id'], ['orgs.id'], ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('id'),
     sa.UniqueConstraint('org_id', 'platform', 'external_id', name='uq_platform_link_org_plat_ext')
@@ -73,8 +73,8 @@ def upgrade() -> None:
     sa.Column('slug', sa.String(length=64), nullable=False),
     sa.Column('display_name', sa.String(length=256), nullable=False),
     sa.Column('id', sa.Uuid(), nullable=False),
-    sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
-    sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
+    sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
+    sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
     sa.ForeignKeyConstraint(['org_id'], ['orgs.id'], ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('id'),
     sa.UniqueConstraint('org_id', 'slug', name='uq_team_org_slug')

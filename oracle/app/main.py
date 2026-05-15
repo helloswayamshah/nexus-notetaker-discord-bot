@@ -1,14 +1,12 @@
 """
-FastAPI application factory.
-
-Creates the app, registers routes, and manages the database engine lifecycle
-via the lifespan context manager.
+FastAPI application factory with error handling middleware.
 """
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app.config import get_settings
 from app.api.routes import orgs, events, artifacts, action_items, platform_links, auth, insights
@@ -17,7 +15,6 @@ from app.api.routes import orgs, events, artifacts, action_items, platform_links
 @asynccontextmanager
 async def lifespan(application: FastAPI):
     """Startup / shutdown lifecycle hook."""
-    # Import here to avoid circular deps at module level
     from app.api.deps import init_engine, dispose_engine
 
     settings = get_settings()
@@ -32,11 +29,11 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title=settings.app_name,
         description="Central AI Oracle — the connective tissue across all your platforms.",
-        version="0.1.0",
+        version="0.2.0",
         lifespan=lifespan,
     )
 
-    # CORS — permissive for dev, tighten in production
+    # CORS
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
@@ -44,6 +41,21 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    # ── Error handling ───────────────────────────────────────────────────
+    @app.exception_handler(ValueError)
+    async def value_error_handler(request: Request, exc: ValueError):
+        return JSONResponse(
+            status_code=422,
+            content={"error": {"code": "validation_error", "message": str(exc)}},
+        )
+
+    @app.exception_handler(Exception)
+    async def generic_error_handler(request: Request, exc: Exception):
+        return JSONResponse(
+            status_code=500,
+            content={"error": {"code": "internal_error", "message": "An unexpected error occurred"}},
+        )
 
     # ── Routes ───────────────────────────────────────────────────────────
     app.include_router(auth.router, prefix="/auth", tags=["Auth"])
@@ -56,7 +68,7 @@ def create_app() -> FastAPI:
 
     @app.get("/health", tags=["System"])
     async def health():
-        return {"status": "ok", "service": "nexus-oracle"}
+        return {"status": "ok", "service": "nexus-oracle", "version": "0.2.0"}
 
     return app
 
