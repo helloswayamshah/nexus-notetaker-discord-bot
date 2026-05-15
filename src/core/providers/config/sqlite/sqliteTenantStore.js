@@ -1,5 +1,6 @@
 const { TenantConfigStore } = require('../../../interfaces/TenantConfigStore');
 const { encrypt } = require('../../../utils/crypto');
+const { oracleClient } = require('../../oracle');
 
 const ALLOWED_FIELDS = new Set([
   'llm_provider',
@@ -20,7 +21,19 @@ class SqliteTenantStore extends TenantConfigStore {
     this._db = db; // DatabaseProvider
   }
 
-  get({ platform, tenantId }) {
+  async get({ platform, tenantId }) {
+    // ── Phase 3: Oracle Config ────────────────────────────────────────
+    if (oracleClient.enabled) {
+      const oracleConfig = await oracleClient.getConfig(platform, tenantId);
+      if (oracleConfig) {
+        return {
+          platform,
+          tenant_id: tenantId,
+          ...oracleConfig
+        };
+      }
+    }
+
     let row = this._db.queryOne(
       'SELECT * FROM tenant_config WHERE platform = ? AND tenant_id = ?',
       [platform, tenantId]
@@ -42,7 +55,8 @@ class SqliteTenantStore extends TenantConfigStore {
   }
 
   update({ platform, tenantId }, patch) {
-    this.get({ platform, tenantId });
+    // Note: This still updates local SQLite for now.
+    // In a fully stateless adapter, this would be a POST to the Oracle.
     const keys = Object.keys(patch).filter((k) => ALLOWED_FIELDS.has(k) && patch[k] !== undefined);
     if (keys.length === 0) return this.get({ platform, tenantId });
     const setClause = keys.map((k) => `${k} = ?`).join(', ');
@@ -56,3 +70,4 @@ class SqliteTenantStore extends TenantConfigStore {
 }
 
 module.exports = { SqliteTenantStore };
+

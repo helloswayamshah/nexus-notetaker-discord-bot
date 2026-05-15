@@ -12,8 +12,8 @@ const { createLogger } = require('./core/utils/logger');
 const log = createLogger('main');
 
 const PLATFORMS = [
-  { name: 'discord', flag: 'ENABLE_DISCORD', path: './platforms/discord/entrypoint' },
-  { name: 'slack',   flag: 'ENABLE_SLACK',   path: './platforms/slack/entrypoint' },
+  { name: 'discord', flag: 'ENABLE_DISCORD', path: '../adapters/discord/src/entrypoint' },
+  { name: 'slack',   flag: 'ENABLE_SLACK',   path: '../adapters/slack/src/entrypoint' },
 ];
 
 async function main() {

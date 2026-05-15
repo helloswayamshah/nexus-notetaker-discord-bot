@@ -1,39 +1,20 @@
-name: ai-call-summarizer
+name: nexus
 
 # Stack layout:
-#   bot                – the Node.js Discord bot (this repo)
-#   ollama             – local LLM engine (official image)
-#   whisper-models-init – one-shot service that downloads GGML models
-#                        into the shared whisper-models volume
-#   ollama-models-init  – one-shot service that pulls Ollama models
-#                        into the ollama volume (first boot only)
+#   oracle             – Python FastAPI service (the brain)
+#   discord-adapter    – Node.js Discord bot (per-speaker Opus capture)
+#   slack-adapter      – Node.js Slack bot (channel digests)
+#   postgres           – Primary database
+#   ollama             – Local LLM engine
+#   whisper-models-init – One-shot model downloader
+#   ollama-models-init  – One-shot model puller
 #
-# Networking: all services join the internal bridge network `backend`.
-# The bot reaches Ollama via DNS at http://ollama:11434 — no ports are
-# published to the host by default, so nothing is exposed to the internet.
+# Networking: all services on internal bridge `nexus_backend`.
+# Persistence: named volumes for DB data, models, and bot scratch files.
 #
-# Persistence:
-#   bot-data         /app/data (SQLite DB + transient session audio)
-#   whisper-models   /opt/whisper-models
-#   ollama-models    /root/.ollama (Ollama blob store + manifests)
-#
-# Credentials and configuration:
-#   All values come from .env.production in this directory.
-#   Compose loads it via `env_file:` and substitutes variables at up-time.
-#   The ":?..." form on required vars aborts `docker compose up` with a clear
-#   error if they are missing from the file.
-#
-# User-provided keys (OpenAI Whisper, future hosted LLMs) are stored per-guild
-# in SQLite via `/config stt api_key:...` — they are not infra secrets.
-#
-# Scaling hooks:
-#   - Ollama can be replaced by a hosted LLM by removing the ollama +
-#     ollama-models-init services and pointing `/config llm base_url` at an
-#     external URL.
-#   - Whisper can be split onto a second host by swapping the STT provider
-#     in the bot (future `whispercpp-http` adapter) — no compose changes.
-#   - The `backend` network is declared `external: false` today but can be
-#     promoted to an external overlay network for multi-host swarms.
+# Quick start:
+#   cp .env.example .env  # fill in tokens
+#   docker compose up -d
 
 x-logging: &default-logging
   driver: json-file
@@ -42,12 +23,67 @@ x-logging: &default-logging
     max-file: "5"
 
 services:
-  bot:
+  # ── Database ───────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:18-alpine
+    container_name: nexus-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: nexus
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-nexus}
+      POSTGRES_DB: nexus
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    networks:
+      - backend
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    logging: *default-logging
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nexus"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+  # ── Oracle (Python FastAPI) ────────────────────────────────────────────
+  oracle:
+    build:
+      context: ./oracle
+      dockerfile: Dockerfile
+    image: ${ORACLE_IMAGE:-nexus-oracle:local}
+    container_name: nexus-oracle
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://nexus:${POSTGRES_PASSWORD:-nexus}@postgres:5432/nexus
+      JWT_SECRET: ${JWT_SECRET:-CHANGE-ME-in-production}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      LOG_FORMAT: ${LOG_FORMAT:-json}
+      LLM_DEFAULT_BASE_URL: http://ollama:11434
+      LLM_DEFAULT_MODEL: ${LLM_DEFAULT_MODEL:-llama3.1}
+    ports:
+      - "${ORACLE_PORT:-8000}:8000"
+    networks:
+      - backend
+    logging: *default-logging
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # ── Discord Adapter (Node.js) ──────────────────────────────────────────
+  discord-adapter:
     build:
       context: .
       dockerfile: Dockerfile
-    image: ${BOT_IMAGE:-ai-call-summarizer:local}
-    container_name: summarizer-bot
+    image: ${BOT_IMAGE:-nexus-discord:local}
+    container_name: nexus-discord
     restart: unless-stopped
     env_file:
       - .env.production
@@ -58,14 +94,16 @@ services:
         condition: service_healthy
       ollama-models-init:
         condition: service_completed_successfully
+      oracle:
+        condition: service_healthy
     environment:
       NODE_ENV: production
-      # Bot-side paths are baked into the image; override anything in .env.production.
       WHISPER_CPP_BIN: /usr/local/bin/whisper-cli
       WHISPER_MODELS_DIR: /opt/whisper-models
-      # Point LLM at the in-stack Ollama service, regardless of what .env.production says.
       LLM_DEFAULT_BASE_URL: http://ollama:11434
       LLM_DEFAULT_MODEL: ${LLM_DEFAULT_MODEL:-llama3.1}
+      ORACLE_URL: http://oracle:8000
+      USE_ORACLE: ${USE_ORACLE:-false}
     volumes:
       - bot-data:/app/data
       - whisper-models:/opt/whisper-models:ro
@@ -73,17 +111,42 @@ services:
       - backend
     logging: *default-logging
     healthcheck:
-      # The bot has no HTTP surface; use a filesystem marker as a liveness
-      # signal. `data/bot.db` is created at import time in db.js.
       test: ["CMD", "test", "-f", "/app/data/bot.db"]
       interval: 30s
       timeout: 3s
       retries: 5
       start_period: 30s
 
+  # ── Slack Adapter (Node.js) ────────────────────────────────────────────
+  slack-adapter:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ${BOT_IMAGE:-nexus-slack:local}
+    container_name: nexus-slack
+    restart: unless-stopped
+    env_file:
+      - .env.production
+    depends_on:
+      ollama:
+        condition: service_healthy
+      ollama-models-init:
+        condition: service_completed_successfully
+      oracle:
+        condition: service_healthy
+    command: ["node", "adapters/slack/src/index.js"]
+    environment:
+      NODE_ENV: production
+      LLM_DEFAULT_BASE_URL: http://ollama:11434
+      LLM_DEFAULT_MODEL: ${LLM_DEFAULT_MODEL:-llama3.1}
+      ORACLE_URL: http://oracle:8000
+      USE_ORACLE: ${USE_ORACLE:-false}
+    networks:
+      - backend
+    logging: *default-logging
   ollama:
     image: ollama/ollama:latest
-    container_name: summarizer-ollama
+    container_name: nexus-ollama
     restart: unless-stopped
     environment:
       OLLAMA_KEEP_ALIVE: "24h"
@@ -101,9 +164,7 @@ services:
 
   whisper-models-init:
     image: debian:bookworm-slim
-    container_name: summarizer-whisper-init
-    # Runs once per `docker compose up`; exits 0 once all requested models
-    # exist in the shared volume. Skips files that are already present.
+    container_name: nexus-whisper-init
     restart: "no"
     environment:
       WHISPER_MODELS: ${WHISPER_MODELS:-tiny.en base.en small.en}
@@ -134,7 +195,7 @@ services:
 
   ollama-models-init:
     image: ollama/ollama:latest
-    container_name: summarizer-ollama-init
+    container_name: nexus-ollama-init
     restart: "no"
     depends_on:
       ollama:
@@ -157,14 +218,14 @@ services:
 networks:
   backend:
     driver: bridge
-    # Making the name explicit means other compose stacks can join this
-    # network later via `external: true` for multi-service expansion.
-    name: summarizer_backend
+    name: nexus_backend
 
 volumes:
+  pg-data:
+    name: nexus_pg_data
   bot-data:
-    name: summarizer_bot_data
+    name: nexus_bot_data
   whisper-models:
-    name: summarizer_whisper_models
+    name: nexus_whisper_models
   ollama-models:
-    name: summarizer_ollama_models
+    name: nexus_ollama_models

@@ -63,7 +63,7 @@ WORKDIR /app
 COPY --from=whisper-builder /src/whisper.cpp/build/bin/whisper-cli /usr/local/bin/whisper-cli
 COPY --from=deps             /app/node_modules                    ./node_modules
 COPY --chown=bot:bot         src                                  ./src
-COPY --chown=bot:bot         bin                                  ./bin
+COPY --chown=bot:bot         adapters                             ./adapters
 COPY --chown=bot:bot         package.json                         ./
 
 # Data directory is mounted from a named volume at runtime; create it so
@@ -80,4 +80,4 @@ ENV NODE_ENV=production \
 USER bot
 
 ENTRYPOINT ["tini", "--"]
-CMD ["node", "src/index.js"]
+CMD ["node", "adapters/discord/src/index.js"]
