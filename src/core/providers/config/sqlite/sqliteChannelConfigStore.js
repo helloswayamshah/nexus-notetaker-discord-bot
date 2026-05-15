@@ -12,7 +12,7 @@ class SqliteChannelConfigStore {
 
   get(workspaceId, sourceChannel) {
     return this._db.queryOne(
-      'SELECT * FROM slack_channel_config WHERE workspace_id = ? AND source_channel = ?',
+      'SELECT * FROM slack_channel_config WHERE workspace_id = ? AND source_channel = ? AND enabled = 1',
       [workspaceId, sourceChannel]
     ) || null;
   }
