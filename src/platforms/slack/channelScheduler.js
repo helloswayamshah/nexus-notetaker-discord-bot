@@ -13,14 +13,19 @@ class ChannelScheduler {
 
   // Call once at boot — loads persisted configs for all workspaces already in DB.
   start() {
-    // Pull every distinct workspace_id from existing channel configs and load them.
-    // Uses raw db access via the store's internal reference since there's no cross-
-    // workspace query on the public interface.
-    const all = this._channelConfigStore._db.queryAll(
-      'SELECT DISTINCT workspace_id FROM slack_channel_config WHERE enabled = 1'
-    );
-    for (const { workspace_id } of all) {
-      this._loadWorkspace(workspace_id);
+    if (typeof this._channelConfigStore.listWorkspaces !== 'function') {
+      throw new Error('channelConfigStore.listWorkspaces() is required by ChannelScheduler.start()');
+    }
+
+    const all = this._channelConfigStore.listWorkspaces();
+    for (const workspace of all) {
+      const workspaceId =
+        typeof workspace === 'string'
+          ? workspace
+          : workspace.workspace_id || workspace.workspaceId;
+
+      if (!workspaceId) continue;
+      this._loadWorkspace(workspaceId);
     }
     log.info({ workspaces: all.length }, 'Scheduler started');
   }
