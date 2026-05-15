@@ -65,7 +65,7 @@ async function handleReport({ command, ack, respond, client, tenantConfigStore }
       });
     }
   } catch (err) {
-    log.error({ err, workspaceId, channelId }, 'On-demand report failed');
+    log.error('On-demand report failed', { err, workspaceId, channelId });
     await respond({
       response_type: 'ephemeral',
       text: `:x: Failed to generate summary: ${err.message}`,
