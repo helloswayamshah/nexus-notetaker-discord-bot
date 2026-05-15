@@ -1,6 +1,6 @@
 const fs = require('node:fs');
 const { pcmToWav } = require('../utils/audio');
-const { buildTranscript } = require('./buildTranscript');
+const { buildTranscript, collectSpeakerNames } = require('./buildTranscript');
 const { summarize } = require('./summarize');
 
 /**
@@ -16,6 +16,8 @@ const { summarize } = require('./summarize');
  * @param {{ post: Function }} opts.sink              NotificationSink instance
  * @param {object} opts.sinkContext          platform-specific routing context
  * @param {object} opts.logger               scoped logger
+ * @param {string} opts.systemPrompt         LLM system prompt (supplied by the platform)
+ * @param {(transcript: string, speakers: string[]) => string} opts.buildUserPrompt  builds the user message from transcript + speakers
  * @param {(msg: string) => Promise<void>} [opts.onProgress]  optional progress callback
  * @param {number} [opts.minSegmentBytes]    override for minimum segment size filter
  */
@@ -28,6 +30,8 @@ async function runSummarization({
   sink,
   sinkContext,
   logger,
+  systemPrompt,
+  buildUserPrompt,
   onProgress,
   minSegmentBytes,
 }) {
@@ -125,9 +129,12 @@ async function runSummarization({
 
   if (onProgress) await onProgress('Generating summary...');
 
+  const speakers = collectSpeakerNames(utterances);
+  const userPrompt = buildUserPrompt(transcript, speakers);
+
   let summary;
   try {
-    summary = await summarize(llm, transcript);
+    summary = await summarize(llm, userPrompt, systemPrompt);
     logger.info('summary generated', { chars: summary.length });
   } catch (err) {
     logger.error('summarize failed', { err });

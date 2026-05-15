@@ -4,6 +4,7 @@ const { SAMPLE_RATE, CHANNELS } = require('../voiceSession');
 const { DiscordNotificationSink } = require('../DiscordNotificationSink');
 const { getTranscriber, getLLM } = require('../../../core/registry');
 const { runSummarization, cleanupSession } = require('../../../core/pipeline/runSummarization');
+const { SYSTEM_PROMPT, buildUserPrompt } = require('../prompts');
 const tenantConfig = require('../../../core/providers/config/sqliteTenantStore');
 const { createLogger } = require('../../../core/utils/logger');
 
@@ -99,6 +100,8 @@ async function execute(interaction) {
         header: `**Call summary** — requested by <@${interaction.user.id}>`,
       },
       logger: flowLog,
+      systemPrompt: SYSTEM_PROMPT,
+      buildUserPrompt,
       onProgress: (msg) => interaction.editReply(msg),
     });
 

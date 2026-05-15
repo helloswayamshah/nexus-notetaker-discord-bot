@@ -1,7 +1,7 @@
 const { DiscordCommandGateway } = require('./DiscordCommandGateway');
 const { createLogger } = require('../../core/utils/logger');
 
-const log = createLogger('main');
+const log = createLogger('discord:main');
 
 // Register process-level handlers once at module load, not inside start(),
 // so they don't stack if start() is ever retried.
@@ -18,18 +18,31 @@ for (const signal of ['SIGINT', 'SIGTERM']) {
   });
 }
 
-async function start() {
-  const TOKEN = process.env.DISCORD_TOKEN;
-  const APP_ID = process.env.DISCORD_APP_ID;
-  const DEV_GUILD_ID = process.env.DISCORD_DEV_GUILD_ID || null;
+function validateEnv() {
+  const token = process.env.DISCORD_TOKEN;
+  const appId = process.env.DISCORD_APP_ID;
+  const errors = [];
 
-  if (!TOKEN || !APP_ID) {
+  if (!token) errors.push('DISCORD_TOKEN is not set');
+  else if (!token.includes('.')) errors.push('DISCORD_TOKEN looks wrong — expected a bot token containing dots');
+
+  if (!appId) errors.push('DISCORD_APP_ID is not set');
+  else if (!/^\d+$/.test(appId)) errors.push('DISCORD_APP_ID must be a numeric snowflake ID');
+
+  if (errors.length > 0) {
     throw new Error(
-      'Discord: missing required env vars — set DISCORD_TOKEN and DISCORD_APP_ID in .env or docker-compose.',
+      'Discord: missing or invalid env vars:\n' +
+      errors.map((e) => `  • ${e}`).join('\n')
     );
   }
 
-  _gateway = new DiscordCommandGateway({ token: TOKEN, appId: APP_ID, devGuildId: DEV_GUILD_ID });
+  return { token, appId, devGuildId: process.env.DISCORD_DEV_GUILD_ID || null };
+}
+
+async function start() {
+  const { token, appId, devGuildId } = validateEnv();
+
+  _gateway = new DiscordCommandGateway({ token, appId, devGuildId });
 
   try {
     await _gateway.start();
