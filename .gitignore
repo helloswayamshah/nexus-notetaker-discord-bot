@@ -6,3 +6,9 @@ data/
 models/
 *.log
 .claude/
+
+# Oracle dev database
+oracle/dev.db
+oracle/*.db
+__pycache__/
+*.pyc
