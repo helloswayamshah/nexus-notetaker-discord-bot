@@ -60,7 +60,7 @@ const HELP_TEXT = `
 \`/config channel list\`
 
 *Access control*
-\`/config role @rolename\` — Grant a Slack user group config access
+\`/config role @username\` — Grant an individual Slack user config access
 \`/config role\` — Reset to workspace admins only
 
 *Help*

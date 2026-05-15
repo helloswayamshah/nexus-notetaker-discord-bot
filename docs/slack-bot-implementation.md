@@ -187,7 +187,7 @@ const ALLOWED_FIELDS = new Set([
   'llm_provider', 'llm_base_url', 'llm_model',
   'stt_provider', 'stt_model_path', 'stt_model_name', 'stt_api_key',
   'summary_channel_id', 'config_role_id',
-  'slack_config_role',   // Slack: comma-separated user/group IDs allowed to /aics-config
+  'slack_config_role',   // Slack: comma-separated user IDs allowed to /aics-config
 ]);
 
 class SqliteTenantStore extends TenantConfigStore {
@@ -667,7 +667,7 @@ module.exports = { ChannelScheduler };
 | `channel add` | `source=`, `output=`, `interval=` | Add/update a channel schedule |
 | `channel remove` | `source=` | Remove a channel schedule |
 | `channel list` | — | List all channel configs |
-| `role` | user/group ID | Set who can run config commands |
+| `role` | user ID | Set who can run config commands |
 | `show` | — | Show all workspace settings |
 
 ```js
