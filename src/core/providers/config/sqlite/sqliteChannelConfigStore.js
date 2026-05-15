@@ -1,5 +1,28 @@
-class SqliteChannelConfigStore {
+class ChannelConfigStore {
+  listForWorkspace(workspaceId) {
+    throw new Error('ChannelConfigStore.listForWorkspace must be implemented by subclasses');
+  }
+
+  get(workspaceId, sourceChannel) {
+    throw new Error('ChannelConfigStore.get must be implemented by subclasses');
+  }
+
+  set(workspaceId, sourceChannel, config) {
+    throw new Error('ChannelConfigStore.set must be implemented by subclasses');
+  }
+
+  markSummarized(workspaceId, sourceChannel, lastTs) {
+    throw new Error('ChannelConfigStore.markSummarized must be implemented by subclasses');
+  }
+
+  remove(workspaceId, sourceChannel) {
+    throw new Error('ChannelConfigStore.remove must be implemented by subclasses');
+  }
+}
+
+class SqliteChannelConfigStore extends ChannelConfigStore {
   constructor(db) {
+    super();
     this._db = db; // DatabaseProvider
   }
 
